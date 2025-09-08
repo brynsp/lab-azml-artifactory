@@ -1,0 +1,28 @@
+# Python requirements for the sample ML model container
+# These packages are commonly used in Azure ML inference scenarios
+
+# Core Azure ML packages
+azureml-inference-server-http>=1.0.0
+azureml-defaults>=1.50.0
+
+# Scientific computing
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+
+# Web framework (if needed for custom inference server)
+flask>=2.0.0
+gunicorn>=20.0.0
+
+# Utilities
+requests>=2.25.0
+joblib>=1.0.0
+
+# Optional: Additional ML frameworks (uncomment as needed)
+# torch>=1.10.0
+# tensorflow>=2.8.0
+# onnxruntime>=1.10.0
+
+# Development and debugging (optional)
+# ipython>=8.0.0
+# jupyter>=1.0.0

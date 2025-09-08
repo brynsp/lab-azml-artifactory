@@ -1,0 +1,32 @@
+# Azure ML + Artifactory Lab Configuration
+# Copy this file to terraform.tfvars and customize values
+
+# Azure region for all resources
+location = "canadacentral"
+
+# Resource group name
+resource_group_name = "rg-lab-azml-artifactory"
+
+# Environment and project tags
+environment = "lab"
+project     = "azml-artifactory"
+
+# VM administrator credentials
+admin_username = "labadmin"
+# admin_password = "YourSecurePassword123!"  # Uncomment and set, or leave for auto-generation
+
+# Artifactory configuration
+artifactory_username = "admin"
+artifactory_password = "password"
+
+# Enable Azure Bastion for secure VM access (recommended)
+enable_bastion = true
+
+# Resource tags
+tags = {
+  Environment = "Lab"
+  Project     = "AzureML-Artifactory"
+  Purpose     = "Testing container deployment"
+  Owner       = "Contoso"
+  CreatedBy   = "Terraform"
+}

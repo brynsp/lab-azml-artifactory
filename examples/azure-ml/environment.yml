@@ -1,0 +1,33 @@
+# Azure ML Environment Configuration for Contoso Lab
+# This YAML file can be used to create an environment via Azure ML CLI or SDK
+
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+
+name: contoso-artifactory-env
+description: |
+  Custom environment created from container image synchronized from Artifactory.
+  This environment demonstrates the Artifactory -> ACR -> Azure ML workflow.
+
+# Image from ACR (update with your ACR name and image)
+image: <your-acr-name>.azurecr.io/contoso-lab/sample-ml-model:latest
+
+# Optional: conda dependencies (if needed)
+# conda_file: conda.yml
+
+# Optional: pip requirements (if needed)
+# pip:
+#   - azure-ai-ml
+#   - numpy
+#   - pandas
+#   - scikit-learn
+
+# Environment variables
+environment_variables:
+  CONTOSO_LAB_VERSION: "1.0.0"
+  MODEL_NAME: "contoso-sample-model"
+
+# Tags for organization
+tags:
+  source: artifactory
+  purpose: testing
+  lab: azure-ml-artifactory
