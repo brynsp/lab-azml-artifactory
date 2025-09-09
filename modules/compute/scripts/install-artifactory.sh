@@ -15,13 +15,14 @@ NO_SYSTEMD="${NO_SYSTEMD:-0}"
 CLEAN_BOOT="${CLEAN_BOOT:-0}"            # if 1, backup & recreate data dir before start (fresh bootstrap)
 USE_NAMED_VOLUME="${USE_NAMED_VOLUME:-0}" # if 1, use a docker named volume instead of host bind mount
 
-# Memory tuning (reduce defaults for small lab VM unless explicitly overridden)
-JAVA_XMS="${JAVA_XMS:-256m}"
-JAVA_XMX="${JAVA_XMX:-1024m}"
+# Memory tuning (respect explicit user values; auto-tune only if defaults used)
+_DEFAULT_XMS=256m
+_DEFAULT_XMX=1024m
+JAVA_XMS="${JAVA_XMS:-${_DEFAULT_XMS}}"
+JAVA_XMX="${JAVA_XMX:-${_DEFAULT_XMX}}"
 if free -m >/dev/null 2>&1; then
   total_mem=$(free -m | awk '/Mem:/ {print $2}')
-  # If host has >= 8 GB and user didn't override, allow larger heap
-  if [ "$total_mem" -ge 7800 ] && [ -z "${JAVA_TUNED:-}" ]; then
+  if [ "$total_mem" -ge 7800 ] && [ -z "${JAVA_TUNED:-}" ] && [ "$JAVA_XMS" = "${_DEFAULT_XMS}" ] && [ "$JAVA_XMX" = "${_DEFAULT_XMX}" ]; then
     JAVA_XMS="512m"; JAVA_XMX="2048m"; JAVA_TUNED=1
   fi
 fi
