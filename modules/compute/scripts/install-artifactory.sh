@@ -1,131 +1,194 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Robust, idempotent Artifactory OSS install script (clean rewrite)
+set -Eeuo pipefail
+trap 'echo "[artifactory-setup][ERROR] line $LINENO exit $?: $(sed -n "${LINENO}p" "$0")" >&2' ERR
 
-# Install Docker and Artifactory OSS on Ubuntu
-set -e
+ARTI_VERSION="${ARTI_VERSION:-7.77.3}"          # override with env if desired
+ARTI_IMAGE_PRIMARY="releases-docker.jfrog.io/jfrog/artifactory-oss:${ARTI_VERSION}"
+ARTI_IMAGE_ALT="docker.io/jfrog/artifactory-oss:${ARTI_VERSION}"
+DATA_DIR="/opt/artifactory/data"
+COMPOSE_DIR="/opt/artifactory"
+COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
+SERVICE_FILE="/etc/systemd/system/artifactory.service"
+FORCE_REWRITE="${FORCE_REWRITE:-0}"
+NO_SYSTEMD="${NO_SYSTEMD:-0}"
 
-# Update package index
-apt-get update -y
+log(){ printf '[artifactory-setup] %s\n' "$*"; }
 
-# Install required packages
-apt-get install -y \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release
+require_root(){ [ "$(id -u)" -eq 0 ] || { echo "Run as root (use sudo)." >&2; exit 1; }; }
+require_root
 
-# Add Docker's official GPG key
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+ensure_deps(){
+  if ! command -v docker >/dev/null 2>&1; then
+    log "Installing Docker engine + dependencies"
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release jq
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+    apt-get update -y
+    DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    usermod -aG docker ubuntu 2>/dev/null || true
+    systemctl enable docker --now
+  fi
+  command -v curl >/dev/null || apt-get install -y curl
+}
 
-# Add Docker repository
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Update package index again
-apt-get update -y
-
-# Install Docker
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# Add ubuntu user to docker group
-usermod -aG docker ubuntu
-
-# Start and enable Docker
-systemctl start docker
-systemctl enable docker
-
-# Create directory for Artifactory data
-mkdir -p /opt/artifactory/data
-chown -R 1030:1030 /opt/artifactory/data
-
-# Create docker-compose file for Artifactory
-cat <<EOF > /opt/artifactory/docker-compose.yml
-version: '3.8'
+write_compose(){
+  mkdir -p "$DATA_DIR" "$COMPOSE_DIR"
+  chown -R 1030:1030 "$DATA_DIR" || true
+  if [ ! -f "$COMPOSE_FILE" ] || [ "$FORCE_REWRITE" = "1" ]; then
+    local img="$ARTI_IMAGE_PRIMARY"
+    log "Writing compose file (force=$FORCE_REWRITE)"
+    cat >"$COMPOSE_FILE" <<EOF
 services:
   artifactory:
-    image: docker.bintray.io/jfrog/artifactory-oss:latest
+    image: "$img"
     container_name: artifactory
     restart: unless-stopped
     ports:
       - "8082:8082"
       - "8081:8081"
-    volumes:
-      - /opt/artifactory/data:/var/opt/jfrog/artifactory
     environment:
       - JF_SHARED_DATABASE_TYPE=derby
+    volumes:
+      - ${DATA_DIR}:/var/opt/jfrog/artifactory
     ulimits:
-      nproc: 65535
       nofile:
         soft: 32000
         hard: 40000
+      nproc: 65535
 EOF
+  fi
+}
 
-# Start Artifactory using docker-compose
-cd /opt/artifactory
-docker-compose up -d
+validate_compose(){
+  log "Validating compose syntax"
+  if ! docker compose -f "$COMPOSE_FILE" config >/dev/null 2> /tmp/compose_validate.err; then
+    log "Initial validation failed; attempting automatic remediation"
+    # Show diagnostics
+    log "---- compose file (numbered) ----"
+    nl -ba "$COMPOSE_FILE" | sed -n '1,120p'
+    log "---- visible characters ----"
+    sed -n '1,120p' "$COMPOSE_FILE" | sed -n l
+    log "---- error output ----"
+    cat /tmp/compose_validate.err || true
+    # Try alternate image registry replacement
+    if grep -q "docker.io/jfrog/artifactory-oss" "$COMPOSE_FILE"; then
+      log "Switching to alternate image registry"
+      sed -i "s|docker.io/jfrog/artifactory-oss:${ARTI_VERSION}|${ARTI_IMAGE_ALT}|" "$COMPOSE_FILE"
+    fi
+    # Strip any CR characters & tabs which can break YAML
+    tr -d '\r' < "$COMPOSE_FILE" | sed $'s/\t/  /g' > "${COMPOSE_FILE}.san" && mv "${COMPOSE_FILE}.san" "$COMPOSE_FILE"
+    log "Re-validating after sanitation"
+    docker compose -f "$COMPOSE_FILE" config >/dev/null
+  fi
+}
 
-# Wait for Artifactory to start
-echo "Waiting for Artifactory to start..."
-sleep 60
+start_stack(){
+  log "Pulling image (primary: $ARTI_IMAGE_PRIMARY)"
+  if ! docker compose -f "$COMPOSE_FILE" pull artifactory 2> /tmp/artipull.err; then
+    if grep -Ei 'denied|not found|manifest unknown|access' /tmp/artipull.err >/dev/null; then
+      log "Primary pull failed; switching to alternate image $ARTI_IMAGE_ALT"
+      sed -i "s|releases-docker.jfrog.io/jfrog/artifactory-oss:${ARTI_VERSION}|${ARTI_IMAGE_ALT}|" "$COMPOSE_FILE"
+      if ! docker compose -f "$COMPOSE_FILE" pull artifactory 2>> /tmp/artipull.err; then
+        log "Alternate image pull failed"; cat /tmp/artipull.err; exit 1;
+      fi
+    else
+      log "Non-access pull error continuing: $(head -1 /tmp/artipull.err)"
+    fi
+  fi
+  log "Starting container"
+  if ! docker compose -f "$COMPOSE_FILE" up -d 2> /tmp/artistart.err; then
+    log "Startup failed; showing diagnostics"; cat /tmp/artistart.err; docker compose -f "$COMPOSE_FILE" ps; exit 1;
+  fi
+}
 
-# Create a systemd service for Artifactory
-cat <<EOF > /etc/systemd/system/artifactory.service
+create_systemd(){
+  [ "$NO_SYSTEMD" = "1" ] && { log "Skipping systemd unit (NO_SYSTEMD=1)"; return; }
+  if [ ! -f "$SERVICE_FILE" ]; then
+    log "Creating systemd unit"
+    cat >"$SERVICE_FILE" <<EOF
 [Unit]
-Description=Artifactory Docker Compose Service
+Description=Artifactory (Docker Compose)
 Requires=docker.service
 After=docker.service
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/opt/artifactory
-ExecStart=/usr/bin/docker-compose up -d
-ExecStop=/usr/bin/docker-compose down
+WorkingDirectory=${COMPOSE_DIR}
+ExecStart=/usr/bin/docker compose -f ${COMPOSE_FILE} up -d
+ExecStop=/usr/bin/docker compose -f ${COMPOSE_FILE} down
 TimeoutStartSec=0
 
 [Install]
 WantedBy=multi-user.target
 EOF
+    chmod 644 "$SERVICE_FILE"
+    systemctl daemon-reload
+    systemctl enable artifactory.service
+  fi
+  systemctl start artifactory.service || true
+}
 
-# Enable and start the service
-systemctl enable artifactory.service
-systemctl start artifactory.service
+wait_ready(){
+  log "Waiting for port 8082 (timeout ~5m)"
+  for i in $(seq 1 60); do
+    if ss -ltn 2>/dev/null | grep -q ':8082' || curl -sf -o /dev/null http://localhost:8082/; then
+      log "Port 8082 responsive"
+      return 0
+    fi
+    sleep 5
+  done
+  log "ERROR: Timed out waiting for Artifactory service" >&2
+  docker compose -f "$COMPOSE_FILE" ps || true
+  exit 1
+}
 
-# Install Azure CLI
-curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+install_az_cli(){
+  command -v az >/dev/null && return 0
+  log "Installing Azure CLI"
+  curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+}
 
-# Install jq for JSON processing
-apt-get install -y jq
-
-# Create sample container image build script
-cat <<'EOF' > /home/ubuntu/build-sample-image.sh
-#!/bin/bash
-
-# Build a simple sample container image for testing
-mkdir -p /tmp/sample-app
-cd /tmp/sample-app
-
-# Create a simple Dockerfile
-cat <<DOCKER > Dockerfile
+sample_build_script(){
+  local script=/home/ubuntu/build-sample-image.sh
+  [ -f "$script" ] && return 0
+  cat >"$script" <<'EOS'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+log(){ echo "[sample-image] $*"; }
+WORK=/tmp/sample-app
+mkdir -p "$WORK"; cd "$WORK"
+cat >Dockerfile <<DOCKER
 FROM python:3.9-slim
 WORKDIR /app
 COPY . /app
 EXPOSE 80
-CMD ["python", "-c", "print('Hello from Contoso Lab Container!'); import time; time.sleep(3600)"]
+CMD ["python","-c","print('Hello from Contoso Lab Container!');import time;time.sleep(3600)"]
 DOCKER
-
-# Create a dummy application file
 echo "print('Sample ML model placeholder')" > app.py
-
-# Build the image
 docker build -t localhost:8082/contoso-lab/sample-ml-model:latest .
+echo "Built sample image. Push with: docker push localhost:8082/contoso-lab/sample-ml-model:latest" >&2
+EOS
+  chmod +x "$script"
+  chown ubuntu:ubuntu "$script" 2>/dev/null || true
+}
 
-echo "Sample container image built successfully!"
-echo "To push to Artifactory, run: docker push localhost:8082/contoso-lab/sample-ml-model:latest"
-EOF
+main(){
+  ensure_deps
+  write_compose
+  validate_compose
+  start_stack
+  create_systemd
+  wait_ready
+  install_az_cli || true
+  sample_build_script
+  local ip
+  ip=$(hostname -I | awk '{print $1}')
+  log "Artifactory ready: http://${ip}:8082" 
+  log "Default credentials: admin / password (change immediately if still default)"
+}
 
-chmod +x /home/ubuntu/build-sample-image.sh
-chown ubuntu:ubuntu /home/ubuntu/build-sample-image.sh
-
-echo "Artifactory installation completed!"
-echo "Access Artifactory at: http://$(hostname -I | cut -d' ' -f1):8082"
-echo "Default credentials: admin/password"
+main "$@"
+exit 0

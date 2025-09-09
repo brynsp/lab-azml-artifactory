@@ -130,4 +130,4 @@ $SyncScriptShortcut.Save()
 Write-Host "Windows jumpbox setup completed!" -ForegroundColor Green
 Write-Host "Installed: Azure CLI, Git, VS Code, Windows Terminal, PowerShell 7" -ForegroundColor Yellow
 Write-Host "Lab scripts created in C:\LabScripts and desktop shortcuts added." -ForegroundColor Yellow
-push) since Docker Desktop is not installed here." -ForegroWrite-Host "Docker image sync must be done from the Linux Artifactory VM (pull/tag/undColor Red
+Write-Host "Docker image operations (build/pull/tag/push) must be performed on the Linux Artifactory VM (no Docker Desktop here)." -ForegroundColor Red
