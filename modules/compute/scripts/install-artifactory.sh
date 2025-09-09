@@ -13,6 +13,28 @@ SERVICE_FILE="/etc/systemd/system/artifactory.service"
 FORCE_REWRITE="${FORCE_REWRITE:-0}"
 NO_SYSTEMD="${NO_SYSTEMD:-0}"
 
+# Detect a primary non-root login user (overrideable via PRIMARY_USER or ADMIN_NAME env)
+if [ -n "${ADMIN_NAME:-}" ] && [ -z "${PRIMARY_USER:-}" ]; then
+  PRIMARY_USER="$ADMIN_NAME"
+fi
+PRIMARY_USER="${PRIMARY_USER:-}"
+if [ -z "$PRIMARY_USER" ]; then
+  for d in /home/*; do
+    [ -d "$d" ] || continue
+    b=$(basename "$d")
+    # ignore common service/system dirs if any show up
+    case "$b" in
+      labadmin|ubuntu|azureuser|admin|user|ec2-user|debian) PRIMARY_USER="$b"; break;;
+      *) PRIMARY_USER="$b"; break;;
+    esac
+  done
+fi
+PRIMARY_USER=${PRIMARY_USER:-root}
+PRIMARY_HOME="/home/${PRIMARY_USER}"
+if [ "$PRIMARY_USER" = "root" ]; then
+  PRIMARY_HOME="/root"
+fi
+
 log(){ printf '[artifactory-setup] %s\n' "$*"; }
 
 require_root(){ [ "$(id -u)" -eq 0 ] || { echo "Run as root (use sudo)." >&2; exit 1; }; }
@@ -27,7 +49,7 @@ ensure_deps(){
     echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
     apt-get update -y
     DEBIAN_FRONTEND=noninteractive apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-    usermod -aG docker ubuntu 2>/dev/null || true
+  usermod -aG docker "$PRIMARY_USER" 2>/dev/null || true
     systemctl enable docker --now
   fi
   command -v curl >/dev/null || apt-get install -y curl
@@ -152,7 +174,7 @@ install_az_cli(){
 }
 
 sample_build_script(){
-  local script=/home/ubuntu/build-sample-image.sh
+  local script="${PRIMARY_HOME}/build-sample-image.sh"
   [ -f "$script" ] && return 0
   cat >"$script" <<'EOS'
 #!/usr/bin/env bash
@@ -172,7 +194,7 @@ docker build -t localhost:8082/contoso-lab/sample-ml-model:latest .
 echo "Built sample image. Push with: docker push localhost:8082/contoso-lab/sample-ml-model:latest" >&2
 EOS
   chmod +x "$script"
-  chown ubuntu:ubuntu "$script" 2>/dev/null || true
+  chown "$PRIMARY_USER":"$PRIMARY_USER" "$script" 2>/dev/null || true
 }
 
 main(){
