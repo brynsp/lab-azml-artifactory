@@ -88,7 +88,7 @@ services:
       - "8081:8081"
     environment:
       - JF_SHARED_DATABASE_TYPE=derby
-      - EXTRA_JAVA_OPTIONS=-Xms${JAVA_XMS}\ -Xmx${JAVA_XMX}
+      - EXTRA_JAVA_OPTIONS=-Xms${JAVA_XMS} -Xmx${JAVA_XMX}
     volumes:
 $( if [ "$USE_NAMED_VOLUME" = "1" ]; then echo "      - artifactory_data:/var/opt/jfrog/artifactory"; else echo "      - ${DATA_DIR}:/var/opt/jfrog/artifactory"; fi )
     ulimits:
@@ -96,8 +96,10 @@ $( if [ "$USE_NAMED_VOLUME" = "1" ]; then echo "      - artifactory_data:/var/op
         soft: 32000
         hard: 40000
       nproc: 65535
-$( if [ "$USE_NAMED_VOLUME" = "1" ]; then echo "volumes:\n  artifactory_data:"; fi )
 EOF
+    if [ "$USE_NAMED_VOLUME" = "1" ]; then
+      printf '\nvolumes:\n  artifactory_data:\n' >> "$COMPOSE_FILE"
+    fi
   fi
 }
 
