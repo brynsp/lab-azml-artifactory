@@ -11,9 +11,6 @@ Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://com
 # Refresh environment variables
 refreshenv
 
-# Install Docker Desktop
-choco install docker-desktop -y
-
 # Install Azure CLI
 choco install azure-cli -y
 
@@ -131,6 +128,6 @@ $SyncScriptShortcut.Save()
 
 # Output completion message
 Write-Host "Windows jumpbox setup completed!" -ForegroundColor Green
-Write-Host "Installed: Docker Desktop, Azure CLI, Git, VS Code, Windows Terminal, PowerShell 7" -ForegroundColor Yellow
+Write-Host "Installed: Azure CLI, Git, VS Code, Windows Terminal, PowerShell 7" -ForegroundColor Yellow
 Write-Host "Lab scripts created in C:\LabScripts and desktop shortcuts added." -ForegroundColor Yellow
-Write-Host "Please reboot the system to complete Docker Desktop installation." -ForegroundColor Red
+push) since Docker Desktop is not installed here." -ForegroWrite-Host "Docker image sync must be done from the Linux Artifactory VM (pull/tag/undColor Red
