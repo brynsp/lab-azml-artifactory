@@ -54,6 +54,7 @@ variable "enable_nat_gateway" {
   default     = false
 }
 
+
 variable "nat_gateway_idle_timeout" {
   description = "Idle timeout in minutes for NAT Gateway connections (4-120)."
   type        = number

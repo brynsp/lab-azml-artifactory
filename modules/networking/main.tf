@@ -70,13 +70,7 @@ resource "azurerm_nat_gateway_public_ip_association" "this" {
   public_ip_address_id = azurerm_public_ip.nat[0].id
 }
 
-# Associate NAT Gateway with primary compute & ml subnets (not private endpoint or bastion)
-resource "azurerm_subnet_nat_gateway_association" "ml_primary" {
-  count          = var.enable_nat_gateway ? 1 : 0
-  subnet_id      = azurerm_subnet.ml_subnets["ml_subnet"].id
-  nat_gateway_id = azurerm_nat_gateway.this[0].id
-}
-
+# Associate NAT Gateway with only one VNet's primary subnet (Azure does not allow a single NAT GW across VNets)
 resource "azurerm_subnet_nat_gateway_association" "compute_primary" {
   count          = var.enable_nat_gateway ? 1 : 0
   subnet_id      = azurerm_subnet.compute_subnets["compute_subnet"].id
