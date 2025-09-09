@@ -9,6 +9,13 @@
 
 $ErrorActionPreference = 'Stop'
 $LogFile = 'C:\Windows\Temp\jumpbox-setup.log'
+# Start transcript for fuller diagnostics (ignore errors if already started)
+try { Start-Transcript -Path 'C:\Windows\Temp\jumpbox-setup-transcript.txt' -Force | Out-Null } catch {}
+
+if (Test-Path 'C:\Windows\Temp\jumpbox-setup.done') {
+	Write-Host '[INFO] Jumpbox setup previously completed; exiting early.'
+	exit 0
+}
 function Write-Log {
 	param([string]$Message,[string]$Level='INFO')
 	$ts = (Get-Date).ToString('u')
@@ -64,22 +71,34 @@ if (Get-Command refreshenv -ErrorAction SilentlyContinue) { refreshenv }
 
 function Install-ChocoPackage {
 	param(
-		[string]$Name
+		[string]$Name,
+		[switch]$Core
 	)
 	if (choco list --local-only --limit-output | Select-String -SimpleMatch "^$Name|") {
 		Write-Log "$Name already installed"
-		return
+		return $true
 	}
 	try {
 		Invoke-Retry -Description "choco install $Name" -Script { choco install $Name -y --no-progress }
+		return $true
 	} catch {
 		Write-Log "Package $Name failed to install after retries: $($_.Exception.Message)" 'WARN'
+		if ($Core) { $script:CoreFailures++ }
+		return $false
 	}
 }
 
+$script:CoreFailures = 0
 # Core packages (omit Windows Terminal to avoid failures on Server)
-$Packages = @('azure-cli','git','vscode','powershell-core')
-foreach ($p in $Packages) { Install-ChocoPackage $p }
+$CorePackages = @('azure-cli','git')
+foreach ($p in $CorePackages) { Install-ChocoPackage $p -Core }
+
+# Non-core best-effort packages
+$OptionalPackages = @('vscode','powershell-core')
+foreach ($p in $OptionalPackages) { Install-ChocoPackage $p | Out-Null }
+
+# Verify azure cli availability explicitly
+try { az --version | Out-Null } catch { Write-Log "azure-cli invocation failed: $($_.Exception.Message)" 'ERROR'; $script:CoreFailures++ }
 
 # Create desktop shortcuts
 $WshShell = New-Object -ComObject WScript.Shell
@@ -177,8 +196,14 @@ $SyncScriptShortcut.Save()
 
 # Output completion message
 Write-Log 'Windows jumpbox setup completed successfully'
-Write-Log 'Installed (best-effort): Azure CLI, Git, VS Code, PowerShell 7'
+if ($script:CoreFailures -eq 0) {
+	New-Item -ItemType File -Path 'C:\Windows\Temp\jumpbox-setup.done' -Force | Out-Null
+	Write-Log 'Installed (core succeeded): Azure CLI, Git; optional: VS Code, PowerShell 7'
+} else {
+	Write-Log "One or more core components failed (count=$script:CoreFailures)" 'ERROR'
+}
 Write-Log 'Lab scripts created in C:\LabScripts and desktop shortcuts added.'
 Write-Log 'Reminder: Docker operations happen on the Linux Artifactory VM.'
 
-exit 0
+try { Stop-Transcript | Out-Null } catch {}
+if ($script:CoreFailures -eq 0) { exit 0 } else { exit 1 }
