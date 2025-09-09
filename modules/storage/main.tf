@@ -1,13 +1,16 @@
 # Generate a unique name for Storage Account (globally unique)
 resource "random_string" "storage_suffix" {
-  length  = 8
+  # Shorter suffix to keep storage account name within 24 char global limit
+  length  = 6
   special = false
   upper   = false
 }
 
 # Storage Account
 resource "azurerm_storage_account" "main" {
-  name                = "${replace(var.name_prefix, "-", "")}st${random_string.storage_suffix.result}"
+  # Storage account must be 3-24 chars, only lowercase letters & numbers
+  # Use first 14 chars of cleaned prefix + 'st' + 6 rand => max 22
+  name                = "${substr(replace(var.name_prefix, "-", ""), 0, 14)}st${random_string.storage_suffix.result}"
   resource_group_name = var.resource_group_name
   location            = var.location
   

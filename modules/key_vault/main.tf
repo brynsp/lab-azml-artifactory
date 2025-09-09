@@ -3,14 +3,15 @@ data "azurerm_client_config" "current" {}
 
 # Generate a unique name for Key Vault (globally unique)
 resource "random_string" "key_vault_suffix" {
-  length  = 8
+  length  = 6
   special = false
   upper   = false
 }
 
 # Key Vault
 resource "azurerm_key_vault" "main" {
-  name                = "${var.name_prefix}-kv-${random_string.key_vault_suffix.result}"
+  # Ensure name <= 24 chars: (up to 12 from prefix) + '-kv-' (4) + 6 rand = max 22
+  name                = "${substr(var.name_prefix, 0, 12)}-kv-${random_string.key_vault_suffix.result}"
   location            = var.location
   resource_group_name = var.resource_group_name
   
