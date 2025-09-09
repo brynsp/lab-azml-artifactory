@@ -163,11 +163,11 @@ resource "azurerm_windows_virtual_machine" "jumpbox_vm" {
   tags = var.tags
 }
 
-/* Remote Windows setup script now downloaded at apply time.
-   To force re-run change windows_setup_rerun_token variable. */
+/* Windows setup script now embedded (base64) to avoid outbound fetch dependency.
+   Change windows_setup_rerun_token to force re-run if needed. */
 
 locals {
-  windows_setup_script_url = "https://raw.githubusercontent.com/brynsp/lab-azml-artifactory/refs/heads/main/modules/compute/scripts/setup-windows.ps1"
+  windows_setup_script_b64 = base64encode(file("${path.module}/scripts/setup-windows-slim.ps1"))
 }
 
 # Install Docker and Azure CLI on Windows VM
@@ -179,7 +179,7 @@ resource "azurerm_virtual_machine_extension" "windows_setup" {
   type_handler_version = "1.10"
 
   settings = jsonencode({
-    commandToExecute = "powershell -ExecutionPolicy Bypass -Command \"Invoke-WebRequest -UseBasicParsing -Uri '${local.windows_setup_script_url}' -OutFile C:\\setup.ps1; powershell -ExecutionPolicy Bypass -File C:\\setup.ps1\""
+    commandToExecute = "powershell -ExecutionPolicy Bypass -Command \"[IO.File]::WriteAllBytes('C:\\setup.ps1',[Convert]::FromBase64String('${local.windows_setup_script_b64}')); powershell -ExecutionPolicy Bypass -File C:\\setup.ps1\""
   })
 
   # Hash only uses rerun token now (remote file fetched each time extension recreated)
