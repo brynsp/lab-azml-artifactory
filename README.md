@@ -9,6 +9,7 @@ This lab environment provides a minimal, cost-effective simulation of a real ent
 ## Architecture
 
 ### Network Segmentation
+
 - **ML VNet** (`10.0.0.0/16`): Hosts Azure ML workspace and related private endpoints
 - **Compute VNet** (`10.1.0.0/16`): Hosts Artifactory VM, jumpbox, and compute private endpoints
 - **VNet Peering**: Enables communication between ML and Compute VNets
@@ -31,6 +32,7 @@ This lab environment provides a minimal, cost-effective simulation of a real ent
 | Storage Account | `labazmlartifactorysk<random>` | ML workspace storage |
 
 ### Authentication Model
+
 - **Azure Resources**: Managed identities where possible
 - **Artifactory**: Personal Access Token (PAT) authentication
 - **ACR Integration**: ML workspace has AcrPull role assignment
@@ -67,9 +69,33 @@ terraform apply
 ### 3. Access the Lab
 
 After deployment, note the output values:
+
 ```bash
 terraform output
 ```
+
+### 4. (Post-Deploy) Add Artifactory PAT Secret to Key Vault
+
+The Key Vault is deployed with public network access disabled. A placeholder secret is NOT created during `terraform apply` to avoid policy blocks. After deployment, add the PAT from a host with private network access (e.g. the jumpbox) using the helper script:
+
+```bash
+# On the jumpbox or any machine resolving the Key Vault private endpoint
+./scripts/add-artifactory-pat.sh -k $(terraform output -raw key_vault_name) -t <your_pat>
+```
+
+Alternative (prompt for value):
+
+```bash
+./scripts/add-artifactory-pat.sh -k $(terraform output -raw key_vault_name)
+```
+
+From a different subscription context:
+
+```bash
+./scripts/add-artifactory-pat.sh -k <kv-name> -s <subscription-id> -f pat.txt
+```
+
+If you see an error mentioning `Public network access is disabled`, ensure you're running inside the VNet (the Windows jumpbox) or have proper private DNS resolution on your host.
 
 ## Workflow Guide
 
@@ -84,14 +110,19 @@ terraform output
 
 1. On the jumpbox, open Command Prompt or PowerShell
 2. Connect to the Artifactory VM (use private IP from Terraform output):
+
    ```bash
    ssh ubuntu@<artifactory-vm-private-ip>
    ```
+
 3. Build the sample container image:
+
    ```bash
    /home/ubuntu/build-sample-image.sh
    ```
+
 4. Configure Docker to use Artifactory:
+
    ```bash
    # Create local repository in Artifactory (via web UI at http://localhost:8082)
    # Default credentials: admin/password
@@ -113,6 +144,7 @@ Use the provided script to generate a Personal Access Token:
 ```
 
 **Sample Script Output:**
+
 ```bash
 ✓ PAT generated successfully!
 
@@ -132,6 +164,12 @@ eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...
 
 Store this token securely in Azure Key Vault or as a secret in your ML workspace.
 
+To store it in Key Vault (private access):
+
+```bash
+./scripts/add-artifactory-pat.sh -k $(terraform output -raw key_vault_name) -t <access-token>
+```
+
 ### Step 4: Sync Image from Artifactory to ACR
 
 ```bash
@@ -147,6 +185,7 @@ Store this token securely in Azure Key Vault or as a secret in your ML workspace
 
 1. Access Azure ML Studio through the private endpoint
 2. Create a new environment referencing the ACR image:
+
    ```yaml
    name: contoso-artifactory-env
    image: <acr-name>.azurecr.io/contoso-lab/sample-ml-model:latest
@@ -170,6 +209,7 @@ curl -u <USERNAME>:<PASSWORD> -X POST "<ARTIFACTORY_URL>/artifactory/api/securit
 ```
 
 ### Response Format
+
 ```json
 {
   "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
@@ -182,6 +222,7 @@ curl -u <USERNAME>:<PASSWORD> -X POST "<ARTIFACTORY_URL>/artifactory/api/securit
 ### Secure Storage Options
 
 1. **Azure Key Vault** (Recommended):
+
    ```bash
    az keyvault secret set \
      --vault-name <key-vault-name> \
@@ -190,6 +231,7 @@ curl -u <USERNAME>:<PASSWORD> -X POST "<ARTIFACTORY_URL>/artifactory/api/securit
    ```
 
 2. **Azure ML Workspace Secret**:
+
    ```python
    from azure.ai.ml import MLClient
    client = MLClient.from_config()
@@ -202,6 +244,7 @@ curl -u <USERNAME>:<PASSWORD> -X POST "<ARTIFACTORY_URL>/artifactory/api/securit
 ## Testing and Validation
 
 ### Verify Artifactory Access
+
 ```bash
 # Test Artifactory API
 curl -H "Authorization: Bearer <PAT>" \
@@ -212,6 +255,7 @@ docker login <artifactory-ip>:8082 -u <username> -p <PAT>
 ```
 
 ### Verify ACR Integration
+
 ```bash
 # Test ACR login with ML workspace managed identity
 az acr login --name <acr-name>
@@ -287,10 +331,10 @@ Estimated monthly cost: ~$300-400 USD (varies by region and usage)
 
 ### Runtime Issues
 
-1. **Artifactory not accessible**: 
+1. **Artifactory not accessible**:
    - Wait 2-3 minutes after VM deployment
    - Check NSG rules and VM status
-   
+
 2. **Private endpoint resolution**:
    - Verify DNS zone links
    - Test nslookup from VMs

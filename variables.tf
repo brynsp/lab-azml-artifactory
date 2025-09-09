@@ -22,6 +22,12 @@ variable "project" {
   default     = "azml-artifactory"
 }
 
+variable "subscription_id" {
+  description = "Azure subscription ID to deploy resources into (optional if set via ARM_SUBSCRIPTION_ID env var)"
+  type        = string
+  default     = null
+}
+
 variable "admin_username" {
   description = "Administrator username for VMs"
   type        = string
@@ -63,4 +69,10 @@ variable "tags" {
     Purpose     = "Testing container deployment"
     Owner       = "Contoso"
   }
+}
+
+variable "windows_setup_rerun_token" {
+  description = "Change to force the Windows setup extension to re-run (propagates a hash change)."
+  type        = string
+  default     = "initial"
 }

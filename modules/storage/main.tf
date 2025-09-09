@@ -1,3 +1,11 @@
+terraform {
+  required_providers {
+    azapi = {
+      source = "azure/azapi"
+    }
+  }
+}
+
 # Generate a unique name for Storage Account (globally unique)
 resource "random_string" "storage_suffix" {
   # Shorter suffix to keep storage account name within 24 char global limit
@@ -6,26 +14,26 @@ resource "random_string" "storage_suffix" {
   upper   = false
 }
 
-# Storage Account
-resource "azurerm_storage_account" "main" {
-  # Storage account must be 3-24 chars, only lowercase letters & numbers
-  # Use first 14 chars of cleaned prefix + 'st' + 6 rand => max 22
-  name                = "${substr(replace(var.name_prefix, "-", ""), 0, 14)}st${random_string.storage_suffix.result}"
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
-  account_kind            = "StorageV2"
-  
-  # Disable public access
-  public_network_access_enabled = false
-  
-  # Security settings
-  min_tls_version                = "TLS1_2"
-  allow_nested_items_to_be_public = false
-  
-  tags = var.tags
+data "azurerm_client_config" "current" {}
+
+# Create Storage Account directly via AzAPI with shared key access disabled at creation
+resource "azapi_resource" "storage" {
+  type      = "Microsoft.Storage/storageAccounts@2023-01-01"
+  name      = "${substr(replace(var.name_prefix, "-", ""), 0, 14)}st${random_string.storage_suffix.result}"
+  parent_id = "/subscriptions/${data.azurerm_client_config.current.subscription_id}/resourceGroups/${var.resource_group_name}"
+  location  = var.location
+  tags      = var.tags
+  body = {
+    kind = "StorageV2"
+    sku = {
+      name = "Standard_LRS"
+    }
+    properties = {
+      allowSharedKeyAccess = false
+      minimumTlsVersion    = "TLS1_2"
+      publicNetworkAccess  = "Disabled"
+    }
+  }
 }
 
 # Private Endpoint for Blob storage
@@ -37,7 +45,7 @@ resource "azurerm_private_endpoint" "blob_pe" {
 
   private_service_connection {
     name                           = "${var.name_prefix}-st-blob-psc"
-    private_connection_resource_id = azurerm_storage_account.main.id
+    private_connection_resource_id = azapi_resource.storage.id
     is_manual_connection           = false
     subresource_names              = ["blob"]
   }
@@ -59,7 +67,7 @@ resource "azurerm_private_endpoint" "file_pe" {
 
   private_service_connection {
     name                           = "${var.name_prefix}-st-file-psc"
-    private_connection_resource_id = azurerm_storage_account.main.id
+    private_connection_resource_id = azapi_resource.storage.id
     is_manual_connection           = false
     subresource_names              = ["file"]
   }

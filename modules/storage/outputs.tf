@@ -1,14 +1,14 @@
 output "id" {
   description = "ID of the Storage Account"
-  value       = azurerm_storage_account.main.id
+  value       = azapi_resource.storage.id
 }
 
 output "name" {
   description = "Name of the Storage Account"
-  value       = azurerm_storage_account.main.name
+  value       = azapi_resource.storage.name
 }
 
 output "primary_blob_endpoint" {
   description = "Primary blob endpoint"
-  value       = azurerm_storage_account.main.primary_blob_endpoint
+  value       = "https://${azapi_resource.storage.name}.blob.core.windows.net/"
 }

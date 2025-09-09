@@ -14,15 +14,15 @@ resource "azurerm_key_vault" "main" {
   name                = "${substr(var.name_prefix, 0, 12)}-kv-${random_string.key_vault_suffix.result}"
   location            = var.location
   resource_group_name = var.resource_group_name
-  
+
   tenant_id                  = data.azurerm_client_config.current.tenant_id
   sku_name                   = "standard"
   soft_delete_retention_days = 7
   purge_protection_enabled   = false
-  
+
   # Disable public network access
   public_network_access_enabled = false
-  
+
   # Access policy for current user/service principal
   access_policy {
     tenant_id = data.azurerm_client_config.current.tenant_id
@@ -66,13 +66,6 @@ resource "azurerm_private_endpoint" "key_vault_pe" {
   tags = var.tags
 }
 
-# Store Artifactory PAT placeholder secret
-resource "azurerm_key_vault_secret" "artifactory_pat" {
-  name         = "artifactory-pat"
-  value        = "placeholder-generate-using-script"
-  key_vault_id = azurerm_key_vault.main.id
-  
-  tags = var.tags
-  
-  depends_on = [azurerm_private_endpoint.key_vault_pe]
-}
+// Placeholder secret creation removed: with public access disabled and policy enforcement,
+// Terraform cannot set a secret until access via private endpoint is available from the runner.
+// Provide the PAT manually or via a separate, network-integrated pipeline once PE DNS resolves locally.

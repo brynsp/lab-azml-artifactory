@@ -61,3 +61,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "windows_setup_rerun_token" {
+  description = "Change this token (e.g. timestamp or increment) to force the Windows setup extension to re-run even if script content unchanged."
+  type        = string
+  default     = "initial"
+}

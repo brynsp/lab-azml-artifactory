@@ -60,10 +60,10 @@ resource "azurerm_linux_virtual_machine" "artifactory_vm" {
   location            = var.location
   resource_group_name = var.resource_group_name
   size                = "Standard_B2s"
-  
+
   disable_password_authentication = false
-  admin_username                 = var.admin_username
-  admin_password                 = var.admin_password
+  admin_username                  = var.admin_username
+  admin_password                  = var.admin_password
 
   network_interface_ids = [
     azurerm_network_interface.artifactory_nic.id,
@@ -139,7 +139,9 @@ resource "azurerm_windows_virtual_machine" "jumpbox_vm" {
   location            = var.location
   resource_group_name = var.resource_group_name
   size                = "Standard_B2s"
-  
+  # Windows computer name must be <= 15 characters. Derive a short, deterministic name.
+  computer_name = "jbox-${substr(replace(var.name_prefix, "-", ""), 0, 9)}"
+
   admin_username = var.admin_username
   admin_password = var.admin_password
 
@@ -162,6 +164,10 @@ resource "azurerm_windows_virtual_machine" "jumpbox_vm" {
   tags = var.tags
 }
 
+locals {
+  windows_setup_script_b64 = base64encode(file("${path.module}/scripts/setup-windows.ps1"))
+}
+
 # Install Docker and Azure CLI on Windows VM
 resource "azurerm_virtual_machine_extension" "windows_setup" {
   name                 = "windows-setup"
@@ -171,8 +177,12 @@ resource "azurerm_virtual_machine_extension" "windows_setup" {
   type_handler_version = "1.10"
 
   settings = jsonencode({
-    fileUris = []
-    commandToExecute = file("${path.module}/scripts/setup-windows.ps1")
+    commandToExecute = "powershell -ExecutionPolicy Bypass -Command \"$b='${local.windows_setup_script_b64}'; [IO.File]::WriteAllText('C:\\setup.ps1',[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b))); & 'C:\\setup.ps1'\""
+  })
+
+  # Use a dummy protected_settings value tied to script hash to force recreation when script changes
+  protected_settings = jsonencode({
+    script_hash = sha256(format("%s--%s", local.windows_setup_script_b64, var.windows_setup_rerun_token))
   })
 
   tags = var.tags
@@ -181,7 +191,7 @@ resource "azurerm_virtual_machine_extension" "windows_setup" {
 # Public IP for Bastion
 resource "azurerm_public_ip" "bastion_pip" {
   count = var.enable_bastion ? 1 : 0
-  
+
   name                = "${var.name_prefix}-bastion-pip"
   location            = var.location
   resource_group_name = var.resource_group_name
@@ -194,7 +204,7 @@ resource "azurerm_public_ip" "bastion_pip" {
 # Azure Bastion
 resource "azurerm_bastion_host" "bastion" {
   count = var.enable_bastion ? 1 : 0
-  
+
   name                = "${var.name_prefix}-bastion"
   location            = var.location
   resource_group_name = var.resource_group_name
