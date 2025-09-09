@@ -175,12 +175,13 @@ resource "azurerm_virtual_machine_extension" "windows_setup" {
   type                 = "CustomScriptExtension"
   type_handler_version = "1.10"
 
+  # Place the large script content in protected_settings to avoid exceeding command line length limits
   settings = jsonencode({
-    commandToExecute = "powershell -ExecutionPolicy Bypass -Command \"$b='${local.windows_setup_script_b64}'; [IO.File]::WriteAllText('C:\\setup.ps1',[System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b))); & 'C:\\setup.ps1'\""
+    commandToExecute = "powershell -ExecutionPolicy Bypass -Command \"[IO.File]::WriteAllBytes('C:\\setup.b64',[Convert]::FromBase64String('$env:SETUP_B64')); $c=[IO.File]::ReadAllText('C:\\setup.b64'); [IO.File]::WriteAllText('C:\\setup.ps1',[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($c))); powershell -ExecutionPolicy Bypass -File C:\\setup.ps1\""
   })
 
-  # Use a dummy protected_settings value tied to script hash to force recreation when script changes
   protected_settings = jsonencode({
+    SETUP_B64   = local.windows_setup_script_b64
     script_hash = sha256(format("%s--%s", local.windows_setup_script_b64, var.windows_setup_rerun_token))
   })
 
