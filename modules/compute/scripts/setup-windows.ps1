@@ -41,7 +41,8 @@ function Invoke-Retry {
 	for ($i=1; $i -le $MaxAttempts; $i++) {
 		try { & $Script; Write-Log "$Description success (attempt $i)"; return }
 		catch {
-			Write-Log "$Description failed attempt $i: $($_.Exception.Message)" 'WARN'
+			# Format string avoids parser confusion with "$i:" pattern under extension execution context
+			Write-Log ("{0} failed attempt {1}: {2}" -f $Description, $i, $_.Exception.Message) 'WARN'
 			if ($i -eq $MaxAttempts) { Write-Log "$Description exhausted retries" 'ERROR'; throw }
 			Start-Sleep $DelaySeconds
 		}

@@ -163,8 +163,11 @@ resource "azurerm_windows_virtual_machine" "jumpbox_vm" {
   tags = var.tags
 }
 
+/* Remote Windows setup script now downloaded at apply time.
+   To force re-run change windows_setup_rerun_token variable. */
+
 locals {
-  windows_setup_script_b64 = base64encode(file("${path.module}/scripts/setup-windows.ps1"))
+  windows_setup_script_url = "https://raw.githubusercontent.com/brynsp/lab-azml-artifactory/refs/heads/main/modules/compute/scripts/setup-windows.ps1"
 }
 
 # Install Docker and Azure CLI on Windows VM
@@ -175,14 +178,13 @@ resource "azurerm_virtual_machine_extension" "windows_setup" {
   type                 = "CustomScriptExtension"
   type_handler_version = "1.10"
 
-  # Place the large script content in protected_settings to avoid exceeding command line length limits
   settings = jsonencode({
-    commandToExecute = "powershell -ExecutionPolicy Bypass -Command \"[IO.File]::WriteAllBytes('C:\\setup.b64',[Convert]::FromBase64String('$env:SETUP_B64')); $c=[IO.File]::ReadAllText('C:\\setup.b64'); [IO.File]::WriteAllText('C:\\setup.ps1',[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($c))); powershell -ExecutionPolicy Bypass -File C:\\setup.ps1\""
+    commandToExecute = "powershell -ExecutionPolicy Bypass -Command \"Invoke-WebRequest -UseBasicParsing -Uri '${local.windows_setup_script_url}' -OutFile C:\\setup.ps1; powershell -ExecutionPolicy Bypass -File C:\\setup.ps1\""
   })
 
+  # Hash only uses rerun token now (remote file fetched each time extension recreated)
   protected_settings = jsonencode({
-    SETUP_B64   = local.windows_setup_script_b64
-    script_hash = sha256(format("%s--%s", local.windows_setup_script_b64, var.windows_setup_rerun_token))
+    script_hash = sha256(var.windows_setup_rerun_token)
   })
 
   tags = var.tags
