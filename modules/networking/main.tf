@@ -16,8 +16,9 @@ resource "azurerm_subnet" "ml_subnets" {
   virtual_network_name = azurerm_virtual_network.ml_vnet.name
   address_prefixes     = each.value.address_prefixes
 
-  # Disable private endpoint network policies for private endpoint subnets
-  private_endpoint_network_policies_enabled = !endswith(each.key, "pe_subnet")
+  # Disable private endpoint network policies on pe subnet
+  private_endpoint_network_policies = endswith(each.key, "pe_subnet") ? "Disabled" : "Enabled"
+
 }
 
 # Compute VNet
@@ -38,8 +39,8 @@ resource "azurerm_subnet" "compute_subnets" {
   virtual_network_name = azurerm_virtual_network.compute_vnet.name
   address_prefixes     = each.value.address_prefixes
 
-  # Disable private endpoint network policies for private endpoint subnets
-  private_endpoint_network_policies_enabled = !endswith(each.key, "pe_subnet")
+  # Disable private endpoint network policies on pe subnet
+  private_endpoint_network_policies = endswith(each.key, "pe_subnet") ? "Disabled" : "Enabled"
 }
 
 # VNet Peering: ML to Compute

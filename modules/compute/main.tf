@@ -59,7 +59,7 @@ resource "azurerm_linux_virtual_machine" "artifactory_vm" {
   name                = "${var.name_prefix}-artifactory-vm"
   location            = var.location
   resource_group_name = var.resource_group_name
-  size                = "Standard_D2s_v3"
+  size                = "Standard_B2s"
   
   disable_password_authentication = false
   admin_username                 = var.admin_username
@@ -138,7 +138,7 @@ resource "azurerm_windows_virtual_machine" "jumpbox_vm" {
   name                = "${var.name_prefix}-jumpbox-vm"
   location            = var.location
   resource_group_name = var.resource_group_name
-  size                = "Standard_D2s_v3"
+  size                = "Standard_B2s"
   
   admin_username = var.admin_username
   admin_password = var.admin_password
