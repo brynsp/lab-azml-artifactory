@@ -12,3 +12,8 @@ output "principal_id" {
   description = "Principal ID of the ML workspace managed identity"
   value       = azurerm_machine_learning_workspace.main.identity[0].principal_id
 }
+
+output "application_insights_id" {
+  description = "ID of the Application Insights instance"
+  value       = azurerm_application_insights.main.id
+}

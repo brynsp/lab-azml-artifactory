@@ -1,3 +1,13 @@
+# Application Insights for Azure Machine Learning
+resource "azurerm_application_insights" "main" {
+  name                = "${var.name_prefix}-app-insights"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  application_type    = "web"
+  
+  tags = var.tags
+}
+
 # Azure Machine Learning Workspace
 resource "azurerm_machine_learning_workspace" "main" {
   name                = "${var.name_prefix}-ml-workspace"
@@ -11,8 +21,8 @@ resource "azurerm_machine_learning_workspace" "main" {
   # Disable public network access
   public_network_access_enabled = false
   
-  # Minimal configuration - no Application Insights
-  application_insights_id = null
+  # Application Insights integration
+  application_insights_id = azurerm_application_insights.main.id
   
   identity {
     type = "SystemAssigned"
