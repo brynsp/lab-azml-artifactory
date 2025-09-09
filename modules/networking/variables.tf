@@ -47,3 +47,15 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "enable_nat_gateway" {
+  description = "If true, deploy a NAT Gateway and associate with primary ML and Compute subnets for explicit outbound access."
+  type        = bool
+  default     = false
+}
+
+variable "nat_gateway_idle_timeout" {
+  description = "Idle timeout in minutes for NAT Gateway connections (4-120)."
+  type        = number
+  default     = 4
+}

@@ -25,6 +25,7 @@ module "networking" {
   ml_subnets                 = local.ml_subnets
   compute_subnets            = local.compute_subnets
   private_dns_zones          = local.private_dns_zones
+  enable_nat_gateway         = var.enable_nat_gateway
 
   tags = local.common_tags
 }

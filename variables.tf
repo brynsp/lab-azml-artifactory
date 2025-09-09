@@ -76,3 +76,9 @@ variable "windows_setup_rerun_token" {
   type        = string
   default     = "initial"
 }
+
+variable "enable_nat_gateway" {
+  description = "Deploy a NAT Gateway for explicit outbound egress (replaces default system outbound)."
+  type        = bool
+  default     = false
+}

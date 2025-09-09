@@ -12,6 +12,19 @@ COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
 SERVICE_FILE="/etc/systemd/system/artifactory.service"
 FORCE_REWRITE="${FORCE_REWRITE:-0}"
 NO_SYSTEMD="${NO_SYSTEMD:-0}"
+CLEAN_BOOT="${CLEAN_BOOT:-0}"            # if 1, backup & recreate data dir before start (fresh bootstrap)
+USE_NAMED_VOLUME="${USE_NAMED_VOLUME:-0}" # if 1, use a docker named volume instead of host bind mount
+
+# Memory tuning (reduce defaults for small lab VM unless explicitly overridden)
+JAVA_XMS="${JAVA_XMS:-256m}"
+JAVA_XMX="${JAVA_XMX:-1024m}"
+if free -m >/dev/null 2>&1; then
+  total_mem=$(free -m | awk '/Mem:/ {print $2}')
+  # If host has >= 8 GB and user didn't override, allow larger heap
+  if [ "$total_mem" -ge 7800 ] && [ -z "${JAVA_TUNED:-}" ]; then
+    JAVA_XMS="512m"; JAVA_XMX="2048m"; JAVA_TUNED=1
+  fi
+fi
 
 # Detect a primary non-root login user (overrideable via PRIMARY_USER or ADMIN_NAME env)
 if [ -n "${ADMIN_NAME:-}" ] && [ -z "${PRIMARY_USER:-}" ]; then
@@ -56,8 +69,11 @@ ensure_deps(){
 }
 
 write_compose(){
-  mkdir -p "$DATA_DIR" "$COMPOSE_DIR"
-  chown -R 1030:1030 "$DATA_DIR" || true
+  mkdir -p "$COMPOSE_DIR"
+  if [ "$USE_NAMED_VOLUME" != "1" ]; then
+    mkdir -p "$DATA_DIR"
+    chown -R 1030:1030 "$DATA_DIR" || true
+  fi
   if [ ! -f "$COMPOSE_FILE" ] || [ "$FORCE_REWRITE" = "1" ]; then
     local img="$ARTI_IMAGE_PRIMARY"
     log "Writing compose file (force=$FORCE_REWRITE)"
@@ -72,14 +88,36 @@ services:
       - "8081:8081"
     environment:
       - JF_SHARED_DATABASE_TYPE=derby
+      - EXTRA_JAVA_OPTIONS=-Xms${JAVA_XMS}\ -Xmx${JAVA_XMX}
     volumes:
-      - ${DATA_DIR}:/var/opt/jfrog/artifactory
+$( if [ "$USE_NAMED_VOLUME" = "1" ]; then echo "      - artifactory_data:/var/opt/jfrog/artifactory"; else echo "      - ${DATA_DIR}:/var/opt/jfrog/artifactory"; fi )
     ulimits:
       nofile:
         soft: 32000
         hard: 40000
       nproc: 65535
+$( if [ "$USE_NAMED_VOLUME" = "1" ]; then echo "volumes:\n  artifactory_data:"; fi )
 EOF
+  fi
+}
+
+clean_boot_if_requested(){
+  if [ "$CLEAN_BOOT" != "1" ]; then return 0; fi
+  if [ "$USE_NAMED_VOLUME" = "1" ]; then
+    log "CLEAN_BOOT=1 with USE_NAMED_VOLUME=1: removing docker volume if exists"
+    docker volume rm -f artifactory_data 2>/dev/null || true
+  elif [ -d "$DATA_DIR" ]; then
+    local ts backup
+    ts=$(date +%Y%m%d-%H%M%S)
+    backup="${DATA_DIR}.bak-${ts}"
+    log "CLEAN_BOOT=1: backing up existing data dir to $backup and recreating fresh"
+    systemctl stop artifactory.service 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" down 2>/dev/null || true
+    mv "$DATA_DIR" "$backup"
+  fi
+  if [ "$USE_NAMED_VOLUME" != "1" ]; then
+    mkdir -p "$DATA_DIR"
+    chown -R 1030:1030 "$DATA_DIR" || true
   fi
 }
 
@@ -199,6 +237,7 @@ EOS
 
 main(){
   ensure_deps
+  clean_boot_if_requested
   write_compose
   validate_compose
   start_stack

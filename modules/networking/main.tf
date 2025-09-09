@@ -43,6 +43,46 @@ resource "azurerm_subnet" "compute_subnets" {
   private_endpoint_network_policies = endswith(each.key, "pe_subnet") ? "Disabled" : "Enabled"
 }
 
+# Explicit outbound egress via NAT Gateway (optional)
+resource "azurerm_public_ip" "nat" {
+  count               = var.enable_nat_gateway ? 1 : 0
+  name                = "${var.name_prefix}-nat-pip"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = var.tags
+}
+
+resource "azurerm_nat_gateway" "this" {
+  count                   = var.enable_nat_gateway ? 1 : 0
+  name                    = "${var.name_prefix}-natgw"
+  location                = var.location
+  resource_group_name     = var.resource_group_name
+  sku_name                = "Standard"
+  idle_timeout_in_minutes = var.nat_gateway_idle_timeout
+  tags                    = var.tags
+}
+
+resource "azurerm_nat_gateway_public_ip_association" "this" {
+  count                = var.enable_nat_gateway ? 1 : 0
+  nat_gateway_id       = azurerm_nat_gateway.this[0].id
+  public_ip_address_id = azurerm_public_ip.nat[0].id
+}
+
+# Associate NAT Gateway with primary compute & ml subnets (not private endpoint or bastion)
+resource "azurerm_subnet_nat_gateway_association" "ml_primary" {
+  count          = var.enable_nat_gateway ? 1 : 0
+  subnet_id      = azurerm_subnet.ml_subnets["ml_subnet"].id
+  nat_gateway_id = azurerm_nat_gateway.this[0].id
+}
+
+resource "azurerm_subnet_nat_gateway_association" "compute_primary" {
+  count          = var.enable_nat_gateway ? 1 : 0
+  subnet_id      = azurerm_subnet.compute_subnets["compute_subnet"].id
+  nat_gateway_id = azurerm_nat_gateway.this[0].id
+}
+
 # VNet Peering: ML to Compute
 resource "azurerm_virtual_network_peering" "ml_to_compute" {
   name                      = "${var.name_prefix}-ml-to-compute"

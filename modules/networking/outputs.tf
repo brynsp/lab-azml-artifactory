@@ -62,3 +62,8 @@ output "ml_notebooks_dns_zone_id" {
   description = "ID of the ML notebooks private DNS zone"
   value       = azurerm_private_dns_zone.private_dns_zones["privatelink.notebooks.azure.net"].id
 }
+
+output "nat_gateway_public_ip" {
+  description = "Public IP used by outbound traffic via NAT Gateway (null if disabled)"
+  value       = try(azurerm_public_ip.nat[0].ip_address, null)
+}
