@@ -41,19 +41,6 @@ variable "admin_password" {
   default     = null
 }
 
-variable "artifactory_username" {
-  description = "Username for Artifactory authentication"
-  type        = string
-  default     = "admin"
-}
-
-variable "artifactory_password" {
-  description = "Password for Artifactory authentication"
-  type        = string
-  sensitive   = true
-  default     = "password"
-}
-
 variable "enable_bastion" {
   description = "Enable Azure Bastion for secure VM access"
   type        = bool

@@ -33,6 +33,11 @@ output "acr_login_server" {
   value       = module.acr.login_server
 }
 
+output "acr_name" {
+  description = "Name of the Azure Container Registry"
+  value       = module.acr.name
+}
+
 output "ml_workspace_name" {
   description = "Name of the Azure ML workspace"
   value       = module.aml.workspace_name

@@ -39,16 +39,6 @@ variable "admin_password" {
   sensitive   = true
 }
 
-variable "artifactory_username" {
-  description = "Username for Artifactory"
-  type        = string
-}
-
-variable "artifactory_password" {
-  description = "Password for Artifactory"
-  type        = string
-  sensitive   = true
-}
 
 variable "enable_bastion" {
   description = "Enable Azure Bastion"

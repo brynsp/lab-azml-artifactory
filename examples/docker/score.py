@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify # type: ignore
 from model_utils import ContosoLabModel, validate_input_data, format_response
 
 logging.basicConfig(level=logging.INFO)

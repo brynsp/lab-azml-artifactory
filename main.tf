@@ -113,8 +113,6 @@ module "compute" {
 
   admin_username            = var.admin_username
   admin_password            = var.admin_password != null ? var.admin_password : random_password.vm_admin_password[0].result
-  artifactory_username      = var.artifactory_username
-  artifactory_password      = var.artifactory_password
   enable_bastion            = var.enable_bastion
   windows_setup_rerun_token = var.windows_setup_rerun_token
 

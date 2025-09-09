@@ -1,44 +1,88 @@
-# PowerShell script to set up Windows jumpbox with Docker Desktop and Azure CLI
+<#
+	Hardened Windows jumpbox setup script
+	- Adds logging & retries
+	- Removes Docker Desktop references (Linux VM handles Docker work)
+	- Non‑interactive installs
+	- Safe to re-run (idempotent where practical)
+	NOTE: Extension runs as SYSTEM; shortcuts appear for all users via PUBLIC desktop.
+#>
 
-# Set execution policy
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
+$ErrorActionPreference = 'Stop'
+$LogFile = 'C:\Windows\Temp\jumpbox-setup.log'
+function Write-Log {
+	param([string]$Message,[string]$Level='INFO')
+	$ts = (Get-Date).ToString('u')
+	$line = "[$ts][$Level] $Message"
+	Write-Host $line
+	Add-Content -Path $LogFile -Value $line
+}
 
-# Install Chocolatey package manager
-Set-ExecutionPolicy Bypass -Scope Process -Force
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
-Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+Write-Log 'Starting jumpbox setup'
 
-# Refresh environment variables
-refreshenv
+function Test-Network {
+	try { (Invoke-WebRequest -Uri 'https://aka.ms' -UseBasicParsing -TimeoutSec 15) | Out-Null; return $true } catch { return $false }
+}
+if (-not (Test-Network)) {
+	Write-Log 'WARNING: Initial network reachability test failed; retrying in 30s'
+	Start-Sleep 30
+	if (-not (Test-Network)) { Write-Log 'ERROR: No outbound network connectivity; aborting.' 'ERROR'; exit 1 }
+}
 
-# Install Azure CLI
-choco install azure-cli -y
+Write-Log 'Setting execution policy (local machine)'
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force | Out-Null
 
-# Install Git
-choco install git -y
+function Invoke-Retry {
+	param(
+		[scriptblock]$Script,
+		[int]$MaxAttempts = 5,
+		[int]$DelaySeconds = 10,
+		[string]$Description = 'operation'
+	)
+	for ($i=1; $i -le $MaxAttempts; $i++) {
+		try { & $Script; Write-Log "$Description success (attempt $i)"; return }
+		catch {
+			Write-Log "$Description failed attempt $i: $($_.Exception.Message)" 'WARN'
+			if ($i -eq $MaxAttempts) { Write-Log "$Description exhausted retries" 'ERROR'; throw }
+			Start-Sleep $DelaySeconds
+		}
+	}
+}
 
-# Install Visual Studio Code (optional)
-choco install vscode -y
+# Install Chocolatey if missing
+if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+	Write-Log 'Installing Chocolatey'
+	Set-ExecutionPolicy Bypass -Scope Process -Force | Out-Null
+	[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+	Invoke-Retry -Description 'Chocolatey bootstrap' -Script { Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) }
+} else {
+	Write-Log 'Chocolatey already installed; skipping'
+}
 
-# Install Windows Terminal (optional)
-choco install microsoft-windows-terminal -y
+# Refresh env for current session if function is available
+if (Get-Command refreshenv -ErrorAction SilentlyContinue) { refreshenv }
 
-# Install PowerShell 7
-choco install powershell-core -y
+function Install-ChocoPackage {
+	param([string]$Name)
+	if (choco list --local-only --limit-output | Select-String -SimpleMatch "^$Name|") {
+		Write-Log "$Name already installed"
+	} else {
+		Invoke-Retry -Description "choco install $Name" -Script { choco install $Name -y --no-progress }
+	}
+}
+
+Install-ChocoPackage azure-cli
+Install-ChocoPackage git
+Install-ChocoPackage vscode
+Install-ChocoPackage microsoft-windows-terminal
+Install-ChocoPackage powershell-core
 
 # Create desktop shortcuts
-$WshShell = New-Object -comObject WScript.Shell
-
-# Docker Desktop shortcut
-$DockerShortcut = $WshShell.CreateShortcut("$env:PUBLIC\Desktop\Docker Desktop.lnk")
-$DockerShortcut.TargetPath = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
-$DockerShortcut.Save()
-
-# Azure CLI shortcut (Command Prompt)
+$WshShell = New-Object -ComObject WScript.Shell
 $AzureShortcut = $WshShell.CreateShortcut("$env:PUBLIC\Desktop\Azure CLI.lnk")
 $AzureShortcut.TargetPath = "$env:SystemRoot\System32\cmd.exe"
 $AzureShortcut.Arguments = "/k az --version"
 $AzureShortcut.Save()
+Write-Log 'Created Azure CLI shortcut'
 
 # Create sample scripts directory
 New-Item -ItemType Directory -Path "C:\LabScripts" -Force
@@ -127,7 +171,9 @@ $SyncScriptShortcut.TargetPath = "C:\LabScripts\sync-image-to-acr.cmd"
 $SyncScriptShortcut.Save()
 
 # Output completion message
-Write-Host "Windows jumpbox setup completed!" -ForegroundColor Green
-Write-Host "Installed: Azure CLI, Git, VS Code, Windows Terminal, PowerShell 7" -ForegroundColor Yellow
-Write-Host "Lab scripts created in C:\LabScripts and desktop shortcuts added." -ForegroundColor Yellow
-Write-Host "Docker image operations (build/pull/tag/push) must be performed on the Linux Artifactory VM (no Docker Desktop here)." -ForegroundColor Red
+Write-Log 'Windows jumpbox setup completed successfully'
+Write-Log 'Installed: Azure CLI, Git, VS Code, Windows Terminal, PowerShell 7'
+Write-Log 'Lab scripts created in C:\LabScripts and desktop shortcuts added.'
+Write-Log 'Reminder: Docker operations happen on the Linux Artifactory VM.'
+
+exit 0

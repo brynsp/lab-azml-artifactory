@@ -59,7 +59,7 @@ resource "azurerm_linux_virtual_machine" "artifactory_vm" {
   name                = "${var.name_prefix}-artifactory-vm"
   location            = var.location
   resource_group_name = var.resource_group_name
-  size                = "Standard_B2s"
+  size                = "Standard_B4ms"
 
   disable_password_authentication = false
   admin_username                  = var.admin_username
@@ -82,10 +82,9 @@ resource "azurerm_linux_virtual_machine" "artifactory_vm" {
   }
 
   # Custom script to install Docker and Artifactory
-  custom_data = base64encode(templatefile("${path.module}/scripts/install-artifactory.sh", {
-    artifactory_username = var.artifactory_username
-    artifactory_password = var.artifactory_password
-  }))
+  # The install script is a standalone bash script with internal defaults; no Terraform templating required.
+  # Using filebase64 avoids template interpolation conflicts with bash variable syntax (e.g. ${ARTI_VERSION}).
+  custom_data = filebase64("${path.module}/scripts/install-artifactory.sh")
 
   tags = var.tags
 }
