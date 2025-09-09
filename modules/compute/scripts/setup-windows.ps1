@@ -63,19 +63,23 @@ if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
 if (Get-Command refreshenv -ErrorAction SilentlyContinue) { refreshenv }
 
 function Install-ChocoPackage {
-	param([string]$Name)
+	param(
+		[string]$Name
+	)
 	if (choco list --local-only --limit-output | Select-String -SimpleMatch "^$Name|") {
 		Write-Log "$Name already installed"
-	} else {
+		return
+	}
+	try {
 		Invoke-Retry -Description "choco install $Name" -Script { choco install $Name -y --no-progress }
+	} catch {
+		Write-Log "Package $Name failed to install after retries: $($_.Exception.Message)" 'WARN'
 	}
 }
 
-Install-ChocoPackage azure-cli
-Install-ChocoPackage git
-Install-ChocoPackage vscode
-Install-ChocoPackage microsoft-windows-terminal
-Install-ChocoPackage powershell-core
+# Core packages (omit Windows Terminal to avoid failures on Server)
+$Packages = @('azure-cli','git','vscode','powershell-core')
+foreach ($p in $Packages) { Install-ChocoPackage $p }
 
 # Create desktop shortcuts
 $WshShell = New-Object -ComObject WScript.Shell
@@ -173,7 +177,7 @@ $SyncScriptShortcut.Save()
 
 # Output completion message
 Write-Log 'Windows jumpbox setup completed successfully'
-Write-Log 'Installed: Azure CLI, Git, VS Code, Windows Terminal, PowerShell 7'
+Write-Log 'Installed (best-effort): Azure CLI, Git, VS Code, PowerShell 7'
 Write-Log 'Lab scripts created in C:\LabScripts and desktop shortcuts added.'
 Write-Log 'Reminder: Docker operations happen on the Linux Artifactory VM.'
 
