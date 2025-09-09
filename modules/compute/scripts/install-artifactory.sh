@@ -75,6 +75,7 @@ write_compose(){
     chown -R 1030:1030 "$DATA_DIR" || true
   fi
   if [ ! -f "$COMPOSE_FILE" ] || [ "$FORCE_REWRITE" = "1" ]; then
+  [ "$FORCE_REWRITE" = "1" ] && rm -f "$COMPOSE_FILE"
     local img="$ARTI_IMAGE_PRIMARY"
     log "Writing compose file (force=$FORCE_REWRITE)"
     cat >"$COMPOSE_FILE" <<EOF
@@ -141,6 +142,10 @@ validate_compose(){
     fi
     # Strip any CR characters & tabs which can break YAML
     tr -d '\r' < "$COMPOSE_FILE" | sed $'s/\t/  /g' > "${COMPOSE_FILE}.san" && mv "${COMPOSE_FILE}.san" "$COMPOSE_FILE"
+  # Repair any literal escaped newline artifacts from older versions
+  sed -i 's/volumes:\\n/volumes:/g' "$COMPOSE_FILE"
+  # Repair any lingering backslash space in EXTRA_JAVA_OPTIONS
+  sed -i 's/EXTRA_JAVA_OPTIONS=-Xms\([0-9a-zA-Z]*\)\\ -Xmx/EXTRA_JAVA_OPTIONS=-Xms\1 -Xmx/g' "$COMPOSE_FILE"
     log "Re-validating after sanitation"
     docker compose -f "$COMPOSE_FILE" config >/dev/null
   fi
